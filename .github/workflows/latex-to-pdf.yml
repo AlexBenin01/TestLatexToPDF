@@ -33,12 +33,19 @@ jobs:
         run: |
           mkdir -p PDF
           find ./src -name "*.tex" | while read texfile; do
-            # Ottieni il percorso relativo senza estensione
-            relative_path=$(dirname "$texfile" | sed 's|^./src/||')
-            # Crea la stessa struttura nella cartella PDF
-            mkdir -p "PDF/$relative_path"
-            # Compila il file LaTeX e metti il PDF nella cartella corrispondente
-            pdflatex -output-directory="PDF/$relative_path" "$texfile"
+            echo "Processing $texfile..."
+            
+            # Controlla che il file contenga una definizione di document class
+            if grep -q "\\documentclass" "$texfile"; then
+              # Ottieni il percorso relativo senza estensione
+              relative_path=$(dirname "$texfile" | sed 's|^./src/||')
+              # Crea la stessa struttura nella cartella PDF
+              mkdir -p "PDF/$relative_path"
+              # Compila il file LaTeX
+              pdflatex -interaction=nonstopmode -output-directory="PDF/$relative_path" "$texfile" || echo "Error compiling $texfile"
+            else
+              echo "Skipping $texfile (missing \\documentclass)"
+            fi
           done
 
       # Pulisci i file ausiliari generati da LaTeX
