@@ -27,8 +27,13 @@ jobs:
           echo "No .tex files found. Exiting."
           exit 0
         fi
-        # Impostiamo la variabile d'ambiente per i file, gestendo i percorsi con spazi
-        echo "TEX_FILES=$(echo "$files" | sed 's/\n/ /g')" >> $GITHUB_ENV
+        # Crea un array di file con percorsi correttamente separati
+        TEX_FILES=()
+        for file in $files; do
+          TEX_FILES+=("$file")
+        done
+        # Impostiamo la variabile d'ambiente per i file
+        echo "TEX_FILES=${TEX_FILES[@]}" >> $GITHUB_ENV
 
     - name: Compile PDFs
       run: |
