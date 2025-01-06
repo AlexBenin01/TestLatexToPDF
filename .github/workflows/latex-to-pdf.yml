@@ -14,14 +14,10 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Setup TeX Live
-      uses: dante-ev/texlive-action@v3
-      with:
-        packages: |
-          latexmk
-          babel-italian
-          svg
-          geometry
+    - name: Install TeX Live
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y texlive-full
 
     - name: Find all .tex files
       id: find-tex
@@ -55,4 +51,3 @@ jobs:
         git push origin main
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- 
