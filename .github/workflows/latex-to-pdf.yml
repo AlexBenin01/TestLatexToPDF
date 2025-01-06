@@ -1,44 +1,39 @@
-name: Build LaTeX files
-
-on:
-  push:
-    branches:
-      - main
-
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v2
+
+    - name: Find .tex files and set TEX_FILES
+      run: |
+        # Trova i file .tex e gestisci i percorsi con spazi
+        files=$(find src -type f -name '*.tex')  # Cerca file .tex nella cartella `src`
+        if [ -z "$files" ]; then
+          echo "No .tex files found. Exiting."
+          exit 0
+        fi
+        # Imposta la variabile d'ambiente, separando i file con `:`
+        echo "TEX_FILES=$(echo "$files" | tr '\n' ':')" >> $GITHUB_ENV
 
     - name: Install TeX Live
       run: |
         sudo apt-get update
         sudo apt-get install -y texlive texlive-latex-extra texlive-fonts-recommended texlive-xetex
 
-    - name: Find .tex files
-      run: |
-        files=$(find src -type f -name '*.tex') # Cerca file .tex nella cartella `src`
-        if [ -z "$files" ]; then
-          echo "No .tex files found. Exiting."
-          exit 0
-        fi
-        echo "TEX_FILES=$(echo "$files" | sed 's/\n/ /g')" >> $GITHUB_ENV
-
     - name: Compile LaTeX files
       run: |
-        for file in $TEX_FILES; do
-          relative_path=${file#src/} # Rimuove il prefisso `src/`
-          output_dir="PDF/$(dirname "$relative_path")" # Crea struttura cartelle
+        for file in $(echo $TEX_FILES | tr ':' '\n'); do
+          relative_path=${file#src/}  # Rimuove il prefisso `src/`
+          output_dir="PDF/$(dirname "$relative_path")"  # Crea struttura cartelle
           mkdir -p "$output_dir"
           latexmk -pdf -output-directory="$output_dir" "$file"
           echo "Compiled $file to $output_dir"
         done
 
-    - name: Upload PDF artifacts
+    - name: Upload PDFs as artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: pdf
-        path: PDF/
+        name: pdfs
+        path: PDF/**/*.pdf
