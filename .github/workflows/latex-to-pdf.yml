@@ -1,41 +1,34 @@
-name: LaTeX PDF Generator
+name: Build LaTeX files
 
 on:
   push:
-    paths:
-      - '**/*.tex'  # Trigger su qualsiasi file .tex modificato
-  workflow_dispatch:  # Trigger manuale
+    branches:
+      - main
 
 jobs:
-  build-pdf:
+  build:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
-    - name: Install TeX Live
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y texlive-full
+    - name: Set up TeX Live
+      uses: dante-ev/texlive-action@v2
+      with:
+        install-latex: true
+        install-pdf-tools: true
 
-    - name: Find all .tex files
-      id: find-tex
+    - name: Find .tex files
       run: |
         files=$(find src -type f -name '*.tex') # Cerca file .tex nella cartella `src`
         if [ -z "$files" ]; then
           echo "No .tex files found. Exiting."
           exit 0
         fi
-        # Crea un array di file con percorsi correttamente separati
-        TEX_FILES=()
-        for file in $files; do
-          TEX_FILES+=("$file")
-        done
-        # Impostiamo la variabile d'ambiente per i file
-        echo "TEX_FILES=${TEX_FILES[@]}" >> $GITHUB_ENV
+        echo "TEX_FILES=$(echo "$files" | sed 's/\n/ /g')" >> $GITHUB_ENV
 
-    - name: Compile PDFs
+    - name: Compile LaTeX files
       run: |
         for file in $TEX_FILES; do
           relative_path=${file#src/} # Rimuove il prefisso `src/`
@@ -44,16 +37,9 @@ jobs:
           latexmk -pdf -output-directory="$output_dir" "$file"
           echo "Compiled $file to $output_dir"
         done
-      env:
-        TEX_FILES: ${{ env.TEX_FILES }}
 
-    - name: Commit and push PDFs
-      if: success()
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add PDF/
-        git commit -m "Add generated PDFs"
-        git push origin main
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Upload PDF artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: pdf
+        path: PDF/
