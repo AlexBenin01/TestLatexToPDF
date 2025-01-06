@@ -14,10 +14,9 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set up TeX Live
-      uses: dante-ev/texlive-action@v2
+      uses: actions/setup-latex@v1
       with:
-        install-latex: true
-        install-pdf-tools: true
+        texlive-version: '2021'  # Puoi scegliere la versione di TeX Live che desideri
 
     - name: Find .tex files
       run: |
