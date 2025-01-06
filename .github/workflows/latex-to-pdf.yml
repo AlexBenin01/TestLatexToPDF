@@ -22,12 +22,13 @@ jobs:
     - name: Find all .tex files
       id: find-tex
       run: |
-        files=$(find src -name '*.tex') # Cerca file .tex nella cartella `src`
+        files=$(find src -type f -name '*.tex') # Cerca file .tex nella cartella `src`
         if [ -z "$files" ]; then
           echo "No .tex files found. Exiting."
           exit 0
         fi
-        echo "TEX_FILES=$files" >> $GITHUB_ENV
+        # Impostiamo la variabile d'ambiente per i file, gestendo i percorsi con spazi
+        echo "TEX_FILES=$(echo "$files" | sed 's/\n/ /g')" >> $GITHUB_ENV
 
     - name: Compile PDFs
       run: |
@@ -35,7 +36,7 @@ jobs:
           relative_path=${file#src/} # Rimuove il prefisso `src/`
           output_dir="PDF/$(dirname "$relative_path")" # Crea struttura cartelle
           mkdir -p "$output_dir"
-          latexmk -pdf -output-directory="$output_dir" $file
+          latexmk -pdf -output-directory="$output_dir" "$file"
           echo "Compiled $file to $output_dir"
         done
       env:
