@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Installa gli strumenti necessari per compilare LaTeX e convertire SVG
+      # Installa gli strumenti necessari
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -34,30 +34,29 @@ jobs:
           mkdir -p PDF
           find ./src -name "*.tex" | while read texfile; do
             echo "Processing $texfile..."
-            
-            # Controlla che il file contenga una definizione di document class
             if grep -q "\\documentclass" "$texfile"; then
-              # Ottieni il percorso relativo senza estensione
-              relative_path=$(dirname "$texfile" | sed 's|^./src/||')
-              # Crea la stessa struttura nella cartella PDF
-              mkdir -p "PDF/$relative_path"
-              # Compila il file LaTeX
-              pdflatex -interaction=nonstopmode -output-directory="PDF/$relative_path" "$texfile" || echo "Error compiling $texfile"
+              pdflatex -interaction=nonstopmode -output-directory=PDF "$texfile" || echo "Error compiling $texfile"
             else
               echo "Skipping $texfile (missing \\documentclass)"
             fi
           done
 
-      # Pulisci i file ausiliari generati da LaTeX
+      # Debug: Elenca i file generati
+      - name: Debug PDF Directory
+        run: |
+          echo "Listing files in PDF directory:"
+          ls -l PDF
+
+      # Pulisci i file ausiliari
       - name: Clean up auxiliary files
         run: |
           find PDF -type f ! -name "*.pdf" -delete
 
-      # Aggiunge i file PDF al commit
+      # Aggiungi i file PDF al commit
       - name: Commit compiled PDFs
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add PDF/**/*.pdf
+          git add PDF/*.pdf
           git commit -m "Add compiled PDFs"
           git push
