@@ -1,62 +1,57 @@
-name: Convert LaTeX to PDF
+name: LaTeX PDF Generator
 
 on:
-  pull_request:
-    branches:
-      - main
+  push:
+    paths:
+      - '**/*.tex'  # Trigger su qualsiasi file .tex modificato
+  workflow_dispatch:  # Trigger manuale
 
 jobs:
-  build:
+  build-pdf:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout del repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      # Installa gli strumenti necessari
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y texlive-full inkscape
+    - name: Setup TeX Live
+      uses: dante-ev/texlive-action@v3
+      with:
+        packages: |
+          latexmk
+          babel-italian
+          svg
+          geometry
 
-      # Trova e converte i file SVG in PDF
-      - name: Convert SVG to PDF
-        run: |
-          find ./src -name "*.svg" | while read svgfile; do
-            pdf_file="${svgfile%.svg}.pdf"
-            inkscape "$svgfile" --export-type=pdf --export-filename="$pdf_file"
-          done
+    - name: Find all .tex files
+      id: find-tex
+      run: |
+        files=$(find src -name '*.tex') # Cerca file .tex nella cartella `src`
+        if [ -z "$files" ]; then
+          echo "No .tex files found. Exiting."
+          exit 0
+        fi
+        echo "TEX_FILES=$files" >> $GITHUB_ENV
 
-      # Compila i file LaTeX
-      - name: Compile LaTeX files
-        run: |
-          mkdir -p PDF
-          find ./src -name "*.tex" | while read texfile; do
-            echo "Processing $texfile..."
-            if grep -q "\\documentclass" "$texfile"; then
-              pdflatex -interaction=nonstopmode -output-directory=PDF "$texfile" || echo "Error compiling $texfile"
-            else
-              echo "Skipping $texfile (missing \\documentclass)"
-            fi
-          done
+    - name: Compile PDFs
+      run: |
+        for file in $TEX_FILES; do
+          relative_path=${file#src/} # Rimuove il prefisso `src/`
+          output_dir="PDF/$(dirname "$relative_path")" # Crea struttura cartelle
+          mkdir -p "$output_dir"
+          latexmk -pdf -output-directory="$output_dir" $file
+          echo "Compiled $file to $output_dir"
+        done
+      env:
+        TEX_FILES: ${{ env.TEX_FILES }}
 
-      # Debug: Elenca i file generati
-      - name: Debug PDF Directory
-        run: |
-          echo "Listing files in PDF directory:"
-          ls -l PDF
-
-      # Pulisci i file ausiliari
-      - name: Clean up auxiliary files
-        run: |
-          find PDF -type f ! -name "*.pdf" -delete
-
-      # Aggiungi i file PDF al commit
-      - name: Commit compiled PDFs
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add -A PDF
-          git commit -m "Add compiled PDFs" || echo "No changes to commit"
-          git push || echo "No changes to push"
+    - name: Commit and push PDFs
+      if: success()
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add PDF/
+        git commit -m "Add generated PDFs"
+        git push origin main
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
