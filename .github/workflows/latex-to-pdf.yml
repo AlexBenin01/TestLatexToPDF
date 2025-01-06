@@ -1,0 +1,36 @@
+name: Convert LaTeX to PDF
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout del repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Installa gli strumenti necessari per compilare LaTeX
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive-full
+
+      # Trova e compila tutti i file LaTeX nella directory `src`
+      - name: Compile LaTeX files
+        run: |
+          mkdir -p PDF
+          find ./src -name "*.tex" -exec sh -c 'pdflatex -output-directory=PDF "{}"' \;
+
+      # Aggiunge i file PDF al commit
+      - name: Commit compiled PDFs
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add PDF/*.pdf
+          git commit -m "Add compiled PDFs"
+          git push
