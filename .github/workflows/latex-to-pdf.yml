@@ -14,23 +14,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Installa gli strumenti necessari per compilare LaTeX
-      - name: Install TeX Live
+      # Installa gli strumenti necessari per compilare LaTeX e convertire SVG
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y texlive-full
+          sudo apt-get install -y texlive-full inkscape
 
-      # Trova e compila tutti i file LaTeX nella directory `src`
+      # Trova e converte i file SVG in PDF
+      - name: Convert SVG to PDF
+        run: |
+          find ./src -name "*.svg" | while read svgfile; do
+            pdf_file="${svgfile%.svg}.pdf"
+            inkscape "$svgfile" --export-type=pdf --export-filename="$pdf_file"
+          done
+
+      # Compila i file LaTeX
       - name: Compile LaTeX files
         run: |
           mkdir -p PDF
-          find ./src -name "*.tex" -exec sh -c 'pdflatex -output-directory=PDF "{}"' \;
+          find ./src -name "*.tex" | while read texfile; do
+            # Ottieni il percorso relativo senza estensione
+            relative_path=$(dirname "$texfile" | sed 's|^./src/||')
+            # Crea la stessa struttura nella cartella PDF
+            mkdir -p "PDF/$relative_path"
+            # Compila il file LaTeX e metti il PDF nella cartella corrispondente
+            pdflatex -output-directory="PDF/$relative_path" "$texfile"
+          done
+
+      # Pulisci i file ausiliari generati da LaTeX
+      - name: Clean up auxiliary files
+        run: |
+          find PDF -type f ! -name "*.pdf" -delete
 
       # Aggiunge i file PDF al commit
       - name: Commit compiled PDFs
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add PDF/*.pdf
+          git add PDF/**/*.pdf
           git commit -m "Add compiled PDFs"
           git push
