@@ -1,39 +1,71 @@
+name: Build PDFs
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      # Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: true
 
-    - name: Find .tex files and set TEX_FILES
-      run: |
-        # Trova i file .tex e gestisci i percorsi con spazi
-        files=$(find src -type f -name '*.tex')  # Cerca file .tex nella cartella `src`
-        if [ -z "$files" ]; then
-          echo "No .tex files found. Exiting."
-          exit 0
-        fi
-        # Imposta la variabile d'ambiente, separando i file con `:`
-        echo "TEX_FILES=$(echo "$files" | tr '\n' ':')" >> $GITHUB_ENV
+      # Install TeX Live and Inkscape
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive texlive-latex-extra texlive-fonts-recommended texlive-lang-italian inkscape
 
-    - name: Install TeX Live
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y texlive texlive-latex-extra texlive-fonts-recommended texlive-xetex
+      # Convert SVG files to PDF
+      - name: Convert SVG to PDF
+        run: |
+          find src -type f -name "*.svg" | while read svg; do
+            pdf="${svg%.svg}.pdf"
+            inkscape "$svg" --export-filename="$pdf"
+            echo "Converted $svg to $pdf"
+          done
 
-    - name: Compile LaTeX files
-      run: |
-        for file in $(echo $TEX_FILES | tr ':' '\n'); do
-          relative_path=${file#src/}  # Rimuove il prefisso `src/`
-          output_dir="PDF/$(dirname "$relative_path")"  # Crea struttura cartelle
-          mkdir -p "$output_dir"
-          latexmk -pdf -output-directory="$output_dir" "$file"
-          echo "Compiled $file to $output_dir"
-        done
+      # Compile all .tex files
+      - name: Compile LaTeX files
+        run: |
+          find src -type f -name "*.tex" | while read tex; do
+            dir=$(dirname "$tex")
+            base=$(basename "$tex" .tex)
+            output_pdf="${dir}/${base}.pdf"
+            pdflatex -shell-escape -interaction=nonstopmode -file-line-error -output-directory="$dir" "$tex" || exit 1
+            echo "Compiled $tex to $output_pdf"
+          done
 
-    - name: Upload PDFs as artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: pdfs
-        path: PDF/**/*.pdf
+      # Move all PDFs to a dedicated folder
+      - name: Collect PDFs
+        run: |
+          mkdir -p PDF
+          find src -type f -name "*.pdf" -exec cp {} PDF/ \;
+          echo "Collected all PDFs in the PDF directory"
+
+      # Commit and push generated PDFs to the main branch
+      - name: Commit and push PDFs
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add PDF/
+          git commit -m "Add generated PDFs"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Upload PDFs as artifacts
+      - name: Upload PDFs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfs
+          path: PDF/*.pdf
