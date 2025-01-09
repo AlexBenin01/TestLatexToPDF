@@ -1,71 +1,130 @@
-name: Build PDFs
+name: Build and Transport PDFs
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+    types:
+      - closed
     branches:
-      - main
+      - develop
 
 jobs:
   build:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout repository
+      # Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           persist-credentials: true
 
-      # Install TeX Live and Inkscape
-      - name: Install dependencies
+      # Install TeX Live and required packages
+      - name: Install TeX Live with Italian support
         run: |
           sudo apt-get update
-          sudo apt-get install -y texlive texlive-latex-extra texlive-fonts-recommended texlive-lang-italian inkscape
+          sudo apt-get install -y texlive texlive-latex-extra texlive-fonts-recommended texlive-lang-italian
 
-      # Convert SVG files to PDF in each 'image' folder
-      - name: Convert SVG to PDF
+      # Install Inkscape
+      - name: Install Inkscape
         run: |
-          find src -type f -name "*.svg" | while read svg; do
-            pdf="${svg%.svg}.pdf"
-            inkscape "$svg" --export-filename="$pdf"
-            echo "Converted $svg to $pdf"
+          sudo apt-get install -y inkscape
+
+      # Process all LaTeX projects
+      - name: Process all LaTeX projects
+        run: |
+          base_dir="src/2 - RTB"
+          output_dir="PDF/2 - RTB"
+          mkdir -p "$output_dir"
+
+          # Function to process a LaTeX project
+          process_latex_project() {
+            project_dir="$1"
+            relative_path=$(realpath --relative-to="$base_dir" "$project_dir")
+            output_path="$output_dir/$relative_path"
+            mkdir -p "$output_path"
+            cd "$project_dir"
+
+            # Convert SVGs to PDFs
+            if [ -d "images" ]; then
+              for svg_file in images/*.svg; do
+                [ -e "$svg_file" ] || continue
+                pdf_file="${svg_file%.svg}.pdf"
+                inkscape "$svg_file" --export-filename="$pdf_file"
+              done
+            fi
+
+            # Find and compile the main LaTeX file
+            main_tex=$(find . -maxdepth 1 -type f -name "*.tex" | head -n 1)
+            if [ -n "$main_tex" ]; then
+              pdflatex -shell-escape -interaction=nonstopmode -file-line-error "$main_tex"
+              pdflatex -shell-escape -interaction=nonstopmode -file-line-error "$main_tex"
+
+              # Move the generated PDF to the output directory
+              pdf_name=$(basename "$main_tex" .tex).pdf
+              mv "$pdf_name" "$GITHUB_WORKSPACE/$output_path/"
+            fi
+
+            cd "$GITHUB_WORKSPACE"
+          }
+
+          # Process root directories (Analisi_dei_Requisiti, Norme_di_Progetto)
+          for dir in "$base_dir/Analisi_dei_Requisiti" "$base_dir/Norme_di_Progetto"; do
+            [ -d "$dir" ] && process_latex_project "$dir"
           done
 
-      # Compile all .tex files in each project folder
-      - name: Compile LaTeX files
-        run: |
-          find src -type f -name "*.tex" | while read tex; do
-            dir=$(dirname "$tex")
-            base=$(basename "$tex" .tex)
-            output_pdf="${dir}/${base}.pdf"
-            pdflatex -shell-escape -interaction=nonstopmode -file-line-error -output-directory="$dir" "$tex" || exit 1
-            echo "Compiled $tex to $output_pdf"
+          # Process Verbali (Interni, Esterni)
+          for type in "Interni" "Esterni"; do
+            for sub_dir in "$base_dir/Verbali/$type"/*; do
+              [ -d "$sub_dir" ] && process_latex_project "$sub_dir"
+            done
           done
 
-      # Collect all PDFs in a centralized 'PDF' directory
-      - name: Collect PDFs
-        run: |
-          mkdir -p PDF
-          find src -type f -name "*.pdf" -exec cp {} PDF/ \;
-          echo "Collected all PDFs in the PDF directory"
-
-      # Commit and push generated PDFs to the main branch
-      - name: Commit and push PDFs
+      # Commit PDFs to develop
+      - name: Commit PDFs to develop
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add PDF/
-          git commit -m "Add generated PDFs"
-          git push origin main
+          git commit -m "Add latest PDFs to develop"
+          git push origin develop
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Upload PDFs as artifacts
-      - name: Upload PDFs as artifacts
-        uses: actions/upload-artifact@v4
+  transport:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v3
         with:
-          name: pdfs
-          path: PDF/*.pdf
+          persist-credentials: true
+          ref: main
+
+      # Pull PDFs from develop and push to main
+      - name: Transport PDFs to main
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Checkout develop branch
+          git fetch origin develop:develop
+          git checkout develop
+
+          # Copy PDFs to main branch with adjusted structure
+          git checkout main
+          git pull origin main
+
+          for pdf_path in PDF/2\ -\ RTB/*; do
+            target_path=$(echo "$pdf_path" | sed 's|PDF/||')
+            mkdir -p "$(dirname "$target_path")"
+            mv "$pdf_path" "$target_path"
+          done
+
+          git add 2\ -\ RTB/
+          git commit -m "Transport PDFs from develop to main"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
