@@ -1,0 +1,5 @@
+*.tex
+*.svg
+*.png
+src/
+*.DS_Store
